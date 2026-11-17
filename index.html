@@ -80,6 +80,8 @@ canvas#cv{display:block;cursor:pointer;touch-action:none}
 .st .no{font-family:var(--pixel);font-size:12px;color:var(--bronze)}
 .st .nm{font-size:14px;min-width:0}
 .st.done .nm::after{content:" · 완료";color:var(--jade);font-size:12px}
+.st.next{border-color:var(--cinnabar)}.st.next .nm::after{content:" · 다음";color:#f0a093;font-size:12px}
+.st.locked{opacity:.4;cursor:default}.chgrp.locked{opacity:.45;font-family:var(--display);font-size:16px;color:var(--muted);padding:8px 10px}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .result h2{font-family:var(--display);font-size:40px;font-weight:400;margin:24px 0 4px;text-align:center}
 .result p{text-align:center;color:var(--muted);margin:0}
@@ -3902,10 +3904,10 @@ function showTitle() {
     <button class="cmd" id="sndBtn" type="button">설정</button>
     ${canNG() ? '<button class="cmd primary" id="ngBtn" type="button">2회차 시작</button>' : ''}
     <button class="cmd" id="resetBtn" type="button">진행 초기화</button></div>
-    <div class="tag">스테이지 선택 (제작 중이라 모두 열려 있음)</div>
-    ${groups.map(g => `<details class="chgrp" ${g.ch === openCh ? 'open' : ''}><summary>${g.n} <span class="tag">${g.list.filter(([s]) => save.done[s.id]).length}/${g.list.length}</span></summary>
-      <div class="stlist">${g.list.map(([s, i]) => `<button class="st ${save.done[s.id] ? 'done' : ''}" data-i="${i}" type="button"><span class="no">${s.type === 'battle' ? s.no : (g.ch ? g.ch + '장' : 'PRO')}</span><span class="chip ${s.type}">${names[s.type]}</span><span class="nm">${s.title}${s.stars ? ` <span class="stars">${'★'.repeat(s.stars)}</span>` : ''}${(save.best || {})[s.id] ? ` <span class="gbadge g${save.best[s.id].g}">${save.best[s.id].g}</span>` : ''}</span></button>`).join('')}</div></details>`).join('')}`;
-  t.querySelectorAll('.st').forEach(b => b.onclick = () => { const i = +b.dataset.i; STAGES[i].type === 'battle' ? showCamp(i) : startStage(i); });
+    <div class="tag">스테이지 선택 · 클리어한 스테이지는 언제든 다시 할 수 있어요</div>
+    ${groups.map(g => g.list.some(([s, i]) => stageOpen(i, firstOpen)) ? `<details class="chgrp" ${g.ch === openCh ? 'open' : ''}><summary>${g.n} <span class="tag">${g.list.filter(([s]) => save.done[s.id]).length}/${g.list.length}</span></summary>
+      <div class="stlist">${g.list.map(([s, i]) => !stageOpen(i, firstOpen) ? `<button class="st locked" type="button" disabled><span class="no">🔒</span><span class="chip ${s.type}">${names[s.type]}</span><span class="nm">???</span></button>` : `<button class="st ${save.done[s.id] ? 'done' : ''}${i === firstOpen ? ' next' : ''}" data-i="${i}" type="button"><span class="no">${s.type === 'battle' ? s.no : (g.ch ? g.ch + '장' : 'PRO')}</span><span class="chip ${s.type}">${names[s.type]}</span><span class="nm">${s.title}${s.stars ? ` <span class="stars">${'★'.repeat(s.stars)}</span>` : ''}${(save.best || {})[s.id] ? ` <span class="gbadge g${save.best[s.id].g}">${save.best[s.id].g}</span>` : ''}</span></button>`).join('')}</div></details>` : `<div class="chgrp locked"><span class="no">🔒</span> ${g.ch === 42 ? '외전 · 본편 완결 후 열림' : g.n.replace(/·.*/, '· ???')}</div>`).join('')}`;
+  t.querySelectorAll('.st:not([disabled])').forEach(b => b.onclick = () => { const i = +b.dataset.i; STAGES[i].type === 'battle' ? showCamp(i) : startStage(i); });
   const nextI = Math.max(0, firstOpen === -1 ? 0 : firstOpen);
   $('cont').onclick = () => STAGES[nextI].type === 'battle' && nextI > 0 ? showCamp(nextI) : startStage(nextI);
   $('sheetBtn').onclick = showSheets;
@@ -5343,6 +5345,18 @@ function showCredits(kind) {
   });
 }
 (() => { const a = STAGES.find(s => s.id === '41-6'), b = STAGES.find(s => s.id === 'H-8'); if (a) a.credits = 'main'; if (b) b.credits = 'hidden'; })();
+
+/* ================= 차례차례 진행: 클리어한 스테이지와 다음 스테이지만 열림 ================= */
+function stageOpen(i, firstOpen) {
+  const s = STAGES[i]; if (!s) return false;
+  if (save.done[s.id] || firstOpen < 0) return true;
+  if (s.hidden && !hiddenOpen()) return false;
+  if (chOf(s) >= 42) { // 외전·히든장: 본편 완결 뒤, 장 안에서는 순서대로
+    if (!save.done['41-6']) return false;
+    const p = STAGES[i - 1]; return !p || chOf(p) !== chOf(s) || !!save.done[p.id];
+  }
+  return i <= firstOpen;
+}
 
 /* ================= boot ================= */
 (async () => { await Promise.all([restoreCustom(), loadSheets()]); buildBorrowedSheets(); showTitle(); requestAnimationFrame(render); fitCanvas(); })();
