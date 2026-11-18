@@ -2493,7 +2493,7 @@ function onScreen(tx, ty) { const X = tx * PX, Y = ty * PX, m = PX * .8; return 
 async function lookAt(tx, ty) { if (!onScreen(tx, ty)) { camTo(tx, ty); await sleep(fast() ? 60 : 300); } }
 function fitCanvas() {
   const st = $('stage'), w = Math.max(200, st.clientWidth - 2), h = Math.max(200, st.clientHeight - 2);
-  const vh = 640, vw = Math.round(Math.max(480, Math.min(1152, vh * w / h)));
+  const vh = 640, vw = Math.round(Math.max(480, Math.min(window.MOB_VW || 1152, vh * w / h)));
   if (cv.width !== vw || cv.height !== vh) { cv.width = vw; cv.height = vh; ctx.imageSmoothingEnabled = false; }
   const k = Math.min(w / vw, h / vh);
   cv.style.width = Math.floor(vw * k) + 'px'; cv.style.height = Math.floor(vh * k) + 'px';
@@ -2936,7 +2936,7 @@ function tileFromEvent(e) {
 let drag = null, dragMoved = false, longT = null, longDone = false;
 const touches = new Map(); let pinch = null;
 function setZoom(z, cxs, cys) { // cxs,cys: 화면(캔버스) 좌표 기준점
-  const nz = Math.max(.5, Math.min(1.6, z)); if (nz === ZOOM) return;
+  const nz = Math.max(.5, Math.min(window.ZMAX || 1.6, z)); if (nz === ZOOM) return;
   const wx = cam.x + cxs / ZOOM, wy = cam.y + cys / ZOOM; ZOOM = nz;
   const [x, y] = camClamp(wx - cxs / ZOOM, wy - cys / ZOOM); cam.x = cam.tx = x; cam.y = cam.ty = y;
 }
@@ -5356,6 +5356,116 @@ function stageOpen(i, firstOpen) {
     const p = STAGES[i - 1]; return !p || chOf(p) !== chOf(s) || !!save.done[p.id];
   }
   return i <= firstOpen;
+}
+
+/* ================= 스마트폰 UI (가로 화면 · 터치) ================= */
+const MOB = matchMedia('(pointer:coarse)').matches || (innerHeight <= 540 && innerWidth > innerHeight);
+window.ZMAX = MOB ? 2.4 : 1.6; window.MOB_VW = MOB ? 1700 : 1152;
+(() => {
+  if (!MOB) return;
+  document.body.classList.add('mob');
+  const css = `
+body.mob #app{padding:max(4px,env(safe-area-inset-top,0px)) max(6px,env(safe-area-inset-right,0px)) max(4px,env(safe-area-inset-bottom,0px)) max(6px,env(safe-area-inset-left,0px));gap:4px 6px;grid-template-columns:minmax(0,1fr) 172px}
+body.mob header{padding-bottom:3px;gap:2px 8px;flex-wrap:nowrap}
+body.mob header .hrow{flex:0 1 auto;flex-wrap:nowrap;gap:6px;max-width:46%}
+body.mob #stageTitle{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.mob .chip{font-size:11px;padding:1px 5px;white-space:nowrap}
+body.mob #turn{font-size:11px;white-space:nowrap}
+body.mob #objective{flex:1 1 auto;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;padding:6px 4px;border:1px solid transparent}
+body.mob #objective.open{position:fixed;left:8px;right:8px;top:40px;z-index:40;white-space:normal;background:rgba(19,16,13,.97);border-color:var(--bronze);padding:10px 12px;font-size:14px;line-height:1.6}
+body.mob .iconbtn{min-width:40px;min-height:34px;font-size:16px;padding:2px 8px}
+body.mob #setBtn,body.mob #menuBtn{order:9}
+body.mob.ovl #app{grid-template-columns:minmax(0,1fr)}
+body.mob.ovl #panel{display:none}
+body.mob.ovl #stage{grid-column:1/3}
+body.mob #panel{padding-left:6px;gap:6px}
+body.mob .card{flex-direction:row;flex-wrap:wrap;gap:6px}
+body.mob .card canvas{width:44px;height:44px}
+body.mob .card .nm{font-size:15px}
+body.mob .card .sub{font-size:11px}
+body.mob .stats{font-size:10px;gap:4px 8px}
+body.mob .cmds{grid-template-columns:1fr;gap:5px}
+body.mob .cmd{min-height:42px;font-size:15px;padding:6px 8px;touch-action:manipulation}
+body.mob .cmds .cmd.primary{min-height:48px}
+body.mob .overlay{padding:10px 12px;gap:8px}
+body.mob .overlay .row{gap:6px}
+body.mob .overlay .row>.cmd{min-height:44px;padding:6px 12px}
+body.mob .overlay .row[role=tablist]{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;max-width:100%}
+body.mob .overlay .row[role=tablist]::-webkit-scrollbar{display:none}
+body.mob .overlay .row[role=tablist] .cmd{flex:none;min-width:64px}
+body.mob .overlay > .row:first-child{position:sticky;top:-10px;z-index:2;background:rgba(13,11,9,.97);padding:6px 0;flex-wrap:nowrap}
+body.mob .overlay > .row:first-child > .row:last-child{flex-wrap:nowrap;flex:none}
+body.mob .overlay > .row:first-child > .row:last-child .gold{display:none}
+body.mob .overlay > .row:first-child > .row:first-child{flex:1 1 auto;min-width:0}
+body.mob #goNext{position:fixed;right:max(14px,env(safe-area-inset-right,0px));bottom:max(12px,env(safe-area-inset-bottom,0px));z-index:6;min-height:56px;min-width:120px;font-size:19px;box-shadow:0 6px 16px rgba(0,0,0,.6)}
+body.mob .st{min-height:48px;grid-template-columns:44px auto minmax(0,1fr);gap:8px}
+body.mob .st .nm{font-size:15px}
+body.mob .chgrp summary{min-height:44px;display:flex;align-items:center;gap:6px}
+body.mob .rc{grid-template-columns:56px minmax(0,1fr);padding:8px;gap:8px}
+body.mob .rc canvas{width:56px;height:56px}
+body.mob .roster{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+body.mob .srow .iconbtn{min-width:30px;height:30px}
+body.mob .srow{grid-template-columns:42px minmax(0,1fr) 28px 32px 32px}
+body.mob .dialog{min-height:88px;padding:10px 14px 14px 104px;left:6px;right:6px;bottom:6px}
+body.mob .dialog canvas{width:84px;height:84px;left:8px;bottom:8px}
+body.mob .dialog .who{font-size:17px}
+body.mob .dialog .txt{font-size:15px;line-height:1.6;max-width:none}
+body.mob .dialog .more{font-size:11px}
+body.mob .title.mt{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:12px;overflow:hidden;padding-block:8px}
+body.mob .mt-l{overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:0}
+body.mob .mt-r{overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:0;padding-right:2px}
+body.mob .mt-l h1{font-size:30px;margin:0;line-height:1.1}
+body.mob .mt-l .row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+body.mob .mt-l .row .cmd{min-height:44px;padding:4px 6px;font-size:14px}
+body.mob .mt-l .row .cmd.primary{grid-column:1/3;min-height:54px;font-size:18px}
+body.mob .mt-l #resetBtn{grid-column:1/3;min-height:36px;opacity:.7;font-size:13px}
+body.mob #zoomBox{position:absolute;left:8px;bottom:8px;display:flex;flex-direction:column;gap:6px;z-index:3}
+body.mob #zoomBox button{width:40px;height:40px;border-radius:50%;border:1px solid var(--bronze-dim);background:rgba(19,16,13,.8);color:var(--paper);font-size:22px;line-height:1;padding:0;touch-action:manipulation}
+body.mob.ovl #zoomBox,body.mob.talking #zoomBox{display:none}
+@media (max-height:380px){body.mob #app{grid-template-columns:minmax(0,1fr) 150px} body.mob .cmd{min-height:38px;font-size:14px} body.mob .dialog{min-height:76px;padding-left:92px} body.mob .dialog canvas{width:72px;height:72px}}
+`;
+  const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+  // 헤더 버튼을 아이콘으로
+  const sb = $('setBtn'), mb = $('menuBtn'); if (sb) { sb.textContent = '⚙'; sb.setAttribute('aria-label', '설정'); } if (mb) { mb.textContent = '☰'; mb.setAttribute('aria-label', '메뉴'); }
+  // 목표 문구: 누르면 펼쳐 보기
+  const ob = $('objective'); ob.addEventListener('click', e => { ob.classList.toggle('open'); e.stopPropagation(); });
+  document.addEventListener('pointerdown', e => { if (e.target !== ob) ob.classList.remove('open'); });
+  // 전체 화면 창(타이틀·거점·결과·설정)이 열리면 오른쪽 패널 숨기기
+  const ovIds = ['titleScr', 'sheetScr', 'resultScr', 'setScr'];
+  const sync = () => { document.body.classList.toggle('ovl', ovIds.some(id => $(id) && !$(id).hidden) || !!(G && G.stage && G.stage.type !== 'battle' && !$('cmds').children.length)); document.body.classList.toggle('talking', !$('dlg').hidden); requestAnimationFrame(fitCanvas); };
+  const mo = new MutationObserver(sync); [...ovIds, 'dlg'].forEach(id => $(id) && mo.observe($(id), { attributes: true, attributeFilter: ['hidden'] })); mo.observe($('cmds'), { childList: true }); sync();
+  // 대화 중에는 화면 어디를 눌러도 다음으로
+  $('stage').addEventListener('click', e => { const d = $('dlg'); if (!d.hidden && !d.contains(e.target) && d.onclick && !e.target.closest('.overlay')) { e.stopPropagation(); e.preventDefault(); d.onclick(); } }, true);
+  // 확대·축소 버튼
+  const zb = document.createElement('div'); zb.id = 'zoomBox';
+  zb.innerHTML = '<button type="button" aria-label="확대">＋</button><button type="button" aria-label="축소">－</button>';
+  $('stage').appendChild(zb);
+  const [zi, zo] = zb.querySelectorAll('button');
+  const zc = f => { if (!G || !G.map) return; setZoom(ZOOM * f, cv.width / 2, cv.height / 2); };
+  zi.onclick = e => { e.stopPropagation(); zc(1.2); }; zo.onclick = e => { e.stopPropagation(); zc(1 / 1.2); };
+  zb.addEventListener('pointerdown', e => e.stopPropagation());
+})();
+// 전투 시작 때 손가락으로 누르기 좋은 크기로 확대
+if (MOB) {
+  const _ss = startStage;
+  startStage = async function (i) { ZOOM = 1.45; return _ss.apply(this, arguments); };
+  const _rb = resumeBattle;
+  resumeBattle = function () { ZOOM = 1.45; return _rb.apply(this, arguments); };
+  // 타이틀: 왼쪽 메뉴 · 오른쪽 스테이지 목록
+  const _st = showTitle;
+  showTitle = function () {
+    const r = _st.apply(this, arguments);
+    const t = $('titleScr'); if (t.querySelector('.mt-l')) return r;
+    const kids = [...t.children]; const k = kids.findIndex(n => /^스테이지 선택/.test(n.textContent || ''));
+    if (k < 0) return r;
+    const L = document.createElement('div'), R = document.createElement('div'); L.className = 'mt-l'; R.className = 'mt-r';
+    kids.forEach((n, i) => (i < k ? L : R).appendChild(n));
+    const tag0 = L.querySelector('.tag'); if (tag0 && /팬메이드/.test(tag0.textContent)) tag0.remove();
+    const lk = [...R.querySelectorAll('.chgrp.locked')]; if (lk.length > 1) { lk.slice(1).forEach(n => n.remove()); lk[0].innerHTML = `<span class="no">🔒</span> 이후 ${lk.length}개 장 · 차례대로 열려요`; }
+    t.append(L, R); t.classList.add('mt');
+    const op = R.querySelector('details[open]'); if (op) setTimeout(() => { R.scrollTop = Math.max(0, op.offsetTop - R.offsetTop - 6); }, 0);
+    return r;
+  };
 }
 
 /* ================= boot ================= */
